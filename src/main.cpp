@@ -15,7 +15,7 @@
 
 #define REED_PIN 4
 
-#define ESP_SENSOR_NR 1
+#define ESP_SENSOR_NR 5
 
 WiFiClient espClient;
 PubSubClient client(espClient);
