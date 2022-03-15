@@ -16,7 +16,9 @@
 #define BATTERY_PIN 34
 #define ADC_RESOLUTION 4095
 
-#define ESP_SENSOR_NR 3
+#define REED_PIN 4
+
+#define ESP_SENSOR_NR 1
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -35,12 +37,9 @@ long lastMsg = 0;
 void setup()
 {
     // put your setup code here, to run once:
-    pinMode(23, OUTPUT);
-    digitalWrite(23, HIGH);
-
     Serial.begin(115200);
 
-    pinMode(BATTERY_PIN, INPUT);
+    uint8_t reed_state = digitalRead(REED_PIN);
 
     setup_wifi();
 
@@ -49,117 +48,131 @@ void setup()
     client.setServer(mqtt_broker, 1883);
     // client.setCallback(callback);
 
-    if (!client.connected())
+    do
     {
-        reconnect();
-    }
-    // client.loop();
 
-    // long now = millis();
-    // if (now - lastMsg > 5000)
-    //{
-    //   lastMsg = now;
-    Serial.println("Hello World");
-    double T, P, p0;
+        pinMode(23, OUTPUT);
+        digitalWrite(23, HIGH);
 
-    if (pressure.begin())
-    {
-        Serial.println("BMP180 init success");
+        pinMode(BATTERY_PIN, INPUT);
 
-        char status;
+        pinMode(REED_PIN, INPUT_PULLUP);
 
-        // You must first get a temperature measurement to perform a pressure reading.
-
-        // Start a temperature measurement:
-        // If request is successful, the number of ms to wait is returned.
-        // If request is unsuccessful, 0 is returned.
-        status = pressure.startTemperature();
-        if (status != 0)
+        if (!client.connected())
         {
-            // Wait for the measurement to complete:
-            delay(status);
+            reconnect();
+        }
+        // client.loop();
 
-            // Retrieve the completed temperature measurement:
-            status = pressure.getTemperature(T);
+        // long now = millis();
+        // if (now - lastMsg > 5000)
+        //{
+        //   lastMsg = now;
+        Serial.println("Hello World");
+        double T, P, p0;
+
+        reed_state = digitalRead(REED_PIN);
+
+        if (pressure.begin())
+        {
+            Serial.println("BMP180 init success");
+
+            char status;
+
+            // You must first get a temperature measurement to perform a pressure reading.
+
+            // Start a temperature measurement:
+            // If request is successful, the number of ms to wait is returned.
+            // If request is unsuccessful, 0 is returned.
+            status = pressure.startTemperature();
             if (status != 0)
             {
-                // Print out the measurement:
-                Serial.print("temperature: ");
-                Serial.print(T, 2);
-                Serial.println(" deg C");
+                // Wait for the measurement to complete:
+                delay(status);
 
-                // Start a pressure measurement:
-                // The parameter is the oversampling setting, from 0 to 3 (highest res, longest wait).
-                status = pressure.startPressure(3);
+                // Retrieve the completed temperature measurement:
+                status = pressure.getTemperature(T);
                 if (status != 0)
                 {
-                    // Wait for the measurement to complete:
-                    delay(status);
+                    // Print out the measurement:
+                    Serial.print("temperature: ");
+                    Serial.print(T, 2);
+                    Serial.println(" deg C");
 
-                    // Retrieve the completed pressure measurement:
-                    status = pressure.getPressure(P, T);
+                    // Start a pressure measurement:
+                    // The parameter is the oversampling setting, from 0 to 3 (highest res, longest wait).
+                    status = pressure.startPressure(3);
                     if (status != 0)
                     {
-                        // Print out the measurement:
-                        Serial.print("absolute pressure: ");
-                        Serial.print(P, 2);
-                        Serial.println(" hPa");
+                        // Wait for the measurement to complete:
+                        delay(status);
 
-                        // To remove the effects of altitude, use the sealevel function and your current altitude.
-                        // This number is commonly used in weather reports.
-                        // Result: p0 = sea-level compensated pressure in mb
-                        p0 = pressure.sealevel(P, ALTITUDE);
-                        Serial.print("relative (sea-level) pressure: ");
-                        Serial.print(p0, 2);
-                        Serial.println(" hPa");
+                        // Retrieve the completed pressure measurement:
+                        status = pressure.getPressure(P, T);
+                        if (status != 0)
+                        {
+                            // Print out the measurement:
+                            Serial.print("absolute pressure: ");
+                            Serial.print(P, 2);
+                            Serial.println(" hPa");
+
+                            // To remove the effects of altitude, use the sealevel function and your current altitude.
+                            // This number is commonly used in weather reports.
+                            // Result: p0 = sea-level compensated pressure in mb
+                            p0 = pressure.sealevel(P, ALTITUDE);
+                            Serial.print("relative (sea-level) pressure: ");
+                            Serial.print(p0, 2);
+                            Serial.println(" hPa");
+                        }
+                        else
+                        {
+                            Serial.println("error retrieving pressure measurement\n");
+                        }
                     }
                     else
                     {
-                        Serial.println("error retrieving pressure measurement\n");
+                        Serial.println("error starting pressure measurement\n");
                     }
                 }
                 else
                 {
-                    Serial.println("error starting pressure measurement\n");
+                    Serial.println("error retrieving temperature measurement\n");
                 }
             }
             else
             {
-                Serial.println("error retrieving temperature measurement\n");
+                Serial.println("error starting temperature measurement\n");
             }
         }
         else
         {
-            Serial.println("error starting temperature measurement\n");
+            // Oops, something went wrong, this is usually a connection problem,
+            // see the comments at the top of this sketch for the proper connections.
+
+            Serial.println("BMP180 init fail\n\n");
         }
-    }
-    else
-    {
-        // Oops, something went wrong, this is usually a connection problem,
-        // see the comments at the top of this sketch for the proper connections.
 
-        Serial.println("BMP180 init fail\n\n");
-    }
+        // get an analog voltage between 0 and 3.3v
+        // due to the voltage divider, the value has to be doubled for the battery voltage
+        double battery_value = ((float)analogRead(BATTERY_PIN) / (float)ADC_RESOLUTION) * 3.3 * 2;
+        Serial.print("Battery level: ");
+        Serial.print(battery_value);
+        Serial.println(" V");
 
-    // get an analog voltage between 0 and 3.3v
-    // due to the voltage divider, the value has to be doubled for the battery voltage
-    double battery_value = ((float)analogRead(BATTERY_PIN) / (float)ADC_RESOLUTION) * 3.3 * 2;
-    Serial.print("Battery level: ");
-    Serial.print(battery_value);
-    Serial.println(" V");
+        //  double T, P, p0;
 
-    //  double T, P, p0;
+        char message[50];
+        // dtostrf(battery_value, 1, 2, message);
+        sprintf(message, "%d %f %f %f %f, %d", ESP_SENSOR_NR, battery_value, T, P, p0, reed_state);
+        client.publish("esp32", message);
+        client.loop();
+        // need to wait until packet is sent
+        // how cand we limit this time?
+        // 10s is save, but too long
+        // i go for 2 seconds for now
+        delay(2000);
 
-    char message[50];
-    // dtostrf(battery_value, 1, 2, message);
-    sprintf(message, "%d %f %f %f %f", ESP_SENSOR_NR, battery_value, T, P, p0);
-    client.publish("esp32", message);
-    client.loop();
-    // need to wait until packet is sent
-    // how cand we limit this time?
-    // 10s is save, but too long
-    // i go for 2 seconds for now
-    delay(2000);
+    } while (reed_state != digitalRead(REED_PIN));
 
     Serial.flush();
 
@@ -173,6 +186,7 @@ void setup()
     // micros should restart every time we wake up from deep sleep
     // that can be used to check how long the connection took
     esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
+    esp_sleep_enable_ext0_wakeup((gpio_num_t)REED_PIN, !digitalRead(REED_PIN));
     esp_deep_sleep_start();
 
     Serial.println("There was a problem if this prints");
